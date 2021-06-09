@@ -1,0 +1,175 @@
+---
+title: "ESM 505 Final Report"
+author: "Will Long"
+date: "5/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, include=FALSE}
+suppressPackageStartupMessages(require(dataRetrieval))
+suppressPackageStartupMessages(require(tmap))
+suppressPackageStartupMessages(require(dbplyr))
+suppressPackageStartupMessages(require(sf))
+suppressPackageStartupMessages(require(EGRET))
+suppressPackageStartupMessages(require(broom))
+```
+
+```{r, echo=FALSE,results='hide', warning=FALSE}
+siteNumber <- "14179000"
+QParameterCd <- "00060"
+StartDate1 <- "1932-06-01"
+EndDate1<- "1987-09-30"
+Daily1 <- readNWISDaily(siteNumber, QParameterCd, StartDate1, EndDate1)
+
+StartDate2 <- "1998-10-01"
+EndDate2 <- "2020-10-07"
+Daily2 <- readNWISDaily(siteNumber, QParameterCd, StartDate2, EndDate2)
+
+summary(Daily1)
+
+broom::tidy(summary(Daily2$Q))->mean_Q2
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#INFO <- readNWISInfo(siteNumber, QParameterCd)
+#I recreated the output of function above as a data frame to make the report more reproducable.
+
+INFO <- data.frame("agency_cd" = c("USGS"), "site_no" = c("14179000"), "station_nm" = c("	
+BREITENBUSH R ABV FRENCH CR NR DETROIT, OR."), "site_tp_cd" = c("ST"), "lat_va"= c(444510), "long_va" = c(1220740), "dec_lat_va" = c(44.75262), "dec_long_va" = c(-122.129), "coord_meth_cd" = c("M"), "coord_acy_cd" = c("T"), "coord_datum_cd" = c("NAD27"), "dec_coord_datum_cd" = c("NAD83"), "district_cd" = c("41"), "state_cd"= c("41"), "county_cd" = c("047"), "country_cd" = c("US"), "land_net_ds"= c("  SENES36 T09S  R05E  W"), "map_nm" = c(NA), "map_scale_fc" = c(NA), "alt_va" = c(1573.95), "alt_meth_cd" = c("M"), "alt_acy_va" = c(0.1), "alt_datum_cd" = c("NGVD29"), "huc_cd" = c("17090005"), "basin_cd" = c(NA), 'topo_cd' =c(NA), 'instruments_cd' = c('NNNNYNNNNNNNNNNNNNNNNNNNNNNNNN'), 'construction_dt' = c(NA), 'inventory_dt'=c(NA), 'drain_area_va'=c(108), 'contrib_drain_area_va'=c(NA), 'tz_cd' = c('PST'), 'local_time_fg'=c('Y'), 'reliability_cd'=c('C'), 'gw_file_cd'=c('NNNNNNNN'),'nat_aqfr_cd'=c(NA),'aqfr_cd'=c(NA),'aqfr_type_cd'=c(NA),'well_depth_va'=c(NA),'hole_depth_va'=c(NA),'depth_src_cd'=c(NA),'project_no'=c(NA),'shortName'=c('BREITENBUSH R ABV FRENCH CR NR DETROIT, OR.'),'drainSqKm'=c(279.7187),'staAbbrev'=c('BBush'),'param.nm'=c('Discharge, cubic feet per second'),'param.units'=c('ft3/s'), 'paramShortName'=c('Discharge (CFS)'),'paramNumber'=c('00060'),'constitAbbrev'=c('CFS'))
+
+```
+
+## Abstract
+
+Precipitation and river discharge are critical components that define hydrological regimes of watersheds. Recently, this region has experienced drought conditions and water resource managers need detailed information about changing flow conditions to better plan for decreased streamflow. The purpose of this report is to provide an analysis of the long term trends in precipitation and discharge in the Breitenbush River watershed in the Oregon Cascades, USA. In this analysis, daily streamflow data will be used to detect changes in the streamflow regime by calculating the annual daily mean for multiple periods from 1932 to 20202. The change in mean will be expressed as percent, slope (%/year), and standard deviation of discharge. R tools from the US Geological Survey will be used to import data and perform the long-term analysis. These tools include dataRetrivial and EGRET.
+
+## Introduction
+
+Declining precipitation as snowfall, is causing runoff to occur earlier and more rapidly (Feng and Hu, 2007). This can lead to larger peakflow due to flashy rainfall events. In addition, low flow conditions can be effected by changes in precipitation phase change because snowpack releases water gradually into summer. This can can impact the water resiliency of communities and ecosystems that rely on late season base flow (Rumsey et al., 2015). The Oregon Cascades are a relatively low elevation mountain range and is vulnerable to changes in surface temperature and snow pack reduction. The Breitenbush River subwatershed (HUC 17090005) is located in the North Santiam Watershed in Marion County, Oregon. The climate is warm-summer mediterranean and receives about 59 inches of rain annually. The subwatershed also receives about 146 inches of snowfall annually. Most of the precipitation falls during the winter months. Streamflow monitoring has been ongoing since 1932 and a USGS stream gaging station (`r {INFO$dec_lat_va}`), `r {INFO$dec_long_va}`) is the primary data source for this study. The upstream drainage area is `r {round(INFO$drainSqKm, digits=1)}` square miles.
+
+```{r, include=FALSE}
+st_read('Basemap/catchment.shp') -> WS
+st_read('Basemap/point.shp') -> Gage
+st_read('Basemap/bbush_flowlines.shp') -> FL
+st_read('Basemap/bbush_contour.shp') -> Contour
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+tmap_mode('view') #this creates the webmap output
+
+orig_basemaps <- c("Esri.WorldGrayCanvas","OpenStreetMap","Esri.WorldTopoMap")
+
+tmap_options(basemaps = c("Esri.WorldTopoMap","Stamen.TonerLite","Esri.WorldImagery"))
+ tm_shape(Gage) +
+  tm_dots(
+    border.col = 'red',
+     alpha = 1,
+    border.alpha = 1
+  ) +
+  tm_shape(WS) +
+  tm_polygons(
+    border.col = 'black',
+     alpha = 0,
+    border.alpha = 1
+    ) +
+  tm_shape(Contour) +
+  tm_lines(
+    border.col = 'black',
+    alpha = 0.5,
+    border.alpha = 1) +
+ tm_shape(FL) +
+   tm_lines(
+     col = 'blue',
+     alpha = 1,
+   )
+```
+
+Figure 1. Location of Breitenbush subwatershed with stream gage location and upstream drainage area.
+
+# Data and Methods
+
+Packages developed by the U.S. Geological Survey were used to determine long-term trends in streamflow. The first is dataRetrieval package (De Cicco et al., 2018) which aids in the reproducability of the results. This package enables rapid acquisition of hydrological data from the National Water Information System which is database containing historical and instantaneous time-series. The entire daily discharge record was retrieved; the use of daily discharge values for computation of historical streamflow statistics is common practice in hydrology. Due to a large data gap from 1987 to 1998 when the gaging station was not active, as a result two periods were analyzed using the EGRET package (Hirsch & Cicco, 2015). This package allows for exploratory data analysis of trends in river data, including water quality trends.
+
+Two aspects of stream flow trends were investigated. The first is the occurrence and variability of 7-day low flow which is the average discharge during the 7 days with the lowest flow for the period specified. Low flow trends are correlated with anthroprogenic water use and precipitation variability (Hammon and Flemming, 2021). Second, maximum daily trends were analyzed during the winter months (November through February).These streamflow metrics were used to assess streamflow response to changes in the precipitation regime.
+
+
+# Results
+
+Maximum daily flows increased substantially through from the beginning of the streamflow record until the late 1960's when this trend flat lined and eventually began a gradual negative trend that continues to the present day. A similar, but more defined trend is present when 7-day minimum flow is investigated. In this case, an upward trend of 24 percent is observed until the late 1960's when this trend reverses. A negative 5.5 percent decline in 7-day minimum flow is observed from about 1968 to 1987 and a negative 15 percent decline is record between 2000 and 2019. 
+
+## 1936 to 1987
+
+```{r, warning=FALSE}
+eList <- as.egret(INFO, Daily1)
+eList <- setPA(eList, paStart = 11, paLong = 4)
+plotFlowSingle(eList, istat = 8, qUnit = 2)
+```
+Figure 2. Plot of maximum daily streamflow metrics for 1936 to 1987.
+
+```{r}
+eList <- as.egret(INFO, Daily1)
+eList <- setPA(eList, paStart = 7, paLong = 3)
+plotFlowSingle(eList, istat = 2, qUnit = 2)
+```
+Figure 3. Plot of 7-day minimum flow from 1934 to 1987. 
+
+```{r, comment=NA}
+yearPoints1 <- c(1932, 1950, 1968, 1987)
+
+tableFlowChange(eList, istat = 8, qUnit = 2, yearPoints=yearPoints1)
+```
+Table 1. Trend analysis for maximum daily streamflow, 1932 to 1987. 
+
+```{r, comment=NA}
+tableFlowChange(eList, istat = 2, qUnit = 2, yearPoints=yearPoints1)
+```
+Table 2. Trend analysis for 7-day minimum streamflow, 1932 to 1987.
+
+## 1998 to 2019
+
+```{r, warning=FALSE}
+eList <- as.egret(INFO, Daily2)
+eList <- setPA(eList, paStart = 11, paLong = 4)
+plotFlowSingle(eList, istat = 8, qUnit = 2)
+```
+Figure 4. Plot of maximum daily streamflow, 2000 to 2019.
+
+```{r}
+eList <- as.egret(INFO, Daily2)
+eList <- setPA(eList, paStart = 7, paLong = 3)
+plotFlowSingle(eList, istat = 2, qUnit = 2)
+```
+Figure 5. Plot of 7-day minimum streamflow, 2000 to 2020.
+
+
+```{r, comment=NA}
+yearPoints2 <- c(2000,2010,2019)
+eList <- as.egret(INFO, Daily2)
+eList <- setPA(eList, paStart = 11, paLong = 4)
+tableFlowChange(eList, istat = 8, qUnit = 2, yearPoints=yearPoints2)
+```
+Table 3. Maximum daily streamflow, 2000 to 2019. 
+```{r, comment=NA}
+eList <- as.egret(INFO, Daily2)
+eList <- setPA(eList, paStart = 7, paLong = 3)
+tableFlowChange(eList, istat = 2, qUnit = 2, yearPoints=yearPoints2)
+```
+Table 4. 7-day minimum streamflow, 2000 to 2019. 
+
+# Conclusion
+
+The Breitenbush River has seen periods of increasing streamflow metrics during the first half of the 20th century, but recent trends indicate a reversal of these trends. Water resource managers downstream of this basin should be aware of the severity of this negative trend, because it may have implications for water security. Communities that rely on summer time low flows for irrigation could faces reduced water resource resiliency. As Oregon enters another year of record drought, it is important to note the historical trends do not indicate that we will return to normal conditions in the near future.     
+
+# Work Cited
+
+De Cicco, L. A., Lorenz, D., Hirsch, R. M., & Watkins, W. (2018). dataRetrieval: R packages for discovering and retrieving water data available from US federal hydrologic web services. Reston, VA, DOI, 10, P9X4L3GE.
+
+Feng, S., & Hu, Q. (2007). Changes in winter snowfall/precipitation ratio in the contiguous United States. Journal of Geophysical Research: Atmospheres, 112(D15).
+
+Hirsch, R. M., & De Cicco, L. A. (2015). User guide to Exploration and Graphics for RivEr Trends (EGRET) and dataRetrieval: R packages for hydrologic data (No. 4-A10). US Geological Survey.
+
+Rumsey, C. A., Miller, M. P., Susong, D. D., Tillman, F. D., & Anning, D. W. (2015). Regional scale estimates of baseflow and factors influencing baseflow in the Upper Colorado River Basin. Journal of Hydrology: Regional Studies, 4, 91-107.
